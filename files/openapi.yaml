@@ -1,0 +1,77 @@
+swagger: "2.0"
+
+info:
+  title: ecommerce-api
+  description: API Gateway for E-Commerce Microservices
+  version: 1.0.0
+
+schemes:
+  - https
+
+produces:
+  - application/json
+
+securityDefinitions:
+  api_key:
+    type: "apiKey"
+    name: "x-api-key"
+    in: "header"
+
+security:
+  - api_key: []
+
+paths:
+
+  /api/products:
+    get:
+      summary: Get all products
+      operationId: getProducts
+      x-google-backend:
+        address: https://product-service-ogc5vgmncq-uc.a.run.app
+        path_translation: CONSTANT_ADDRESS
+      responses:
+        '200':
+          description: OK
+
+  /api/products/{id}:
+    get:
+      summary: Get product by ID
+      operationId: getProductById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: https://product-service-ogc5vgmncq-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        '200':
+          description: OK
+
+  /api/inventory:
+    get:
+      summary: Get inventory list
+      operationId: getInventory
+      x-google-backend:
+        address: https://inventory-service-ogc5vgmncq-uc.a.run.app
+        path_translation: CONSTANT_ADDRESS
+      responses:
+        '200':
+          description: OK
+
+  /api/inventory/{productId}:
+    get:
+      summary: Get inventory item
+      operationId: getInventoryById
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: https://inventory-service-ogc5vgmncq-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        '200':
+          description: OK
