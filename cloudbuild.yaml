@@ -1,0 +1,67 @@
+# ============================================================
+# Cloud Build Configuration for Terraform Deployment
+# ============================================================
+
+steps:
+  # Step 1: Terraform Init
+  - name: 'hashicorp/terraform:1.6'
+    id: 'terraform-init'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        echo "Initializing Terraform..."
+        terraform init
+
+  # Step 2: Terraform Plan
+  - name: 'hashicorp/terraform:1.6'
+    id: 'terraform-plan'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        echo "Planning Terraform changes..."
+        terraform plan -var-file=environments/${_ENVIRONMENT}.tfvars -out=tfplan
+
+  # Step 3: Terraform Apply (only on main branch)
+  - name: 'hashicorp/terraform:1.6'
+    id: 'terraform-apply'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        if [ "${BRANCH_NAME}" = "main" ]; then
+          echo "Applying Terraform changes..."
+          terraform apply -auto-approve tfplan
+        else
+          echo "Skipping apply - not main branch"
+        fi
+
+  # Step 4: Output Results
+  - name: 'hashicorp/terraform:1.6'
+    id: 'terraform-output'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        if [ "${BRANCH_NAME}" = "main" ]; then
+          echo "==================================================="
+          echo "Deployment Summary:"
+          echo "==================================================="
+          terraform output configuration_summary
+          echo ""
+          echo "To get the API key, run:"
+          echo "  terraform output -raw api_key"
+        fi
+
+# Substitutions
+substitutions:
+  _ENVIRONMENT: 'dev'
+
+# Options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'N1_HIGHCPU_8'
+
+# Timeout
+timeout: '1800s'
