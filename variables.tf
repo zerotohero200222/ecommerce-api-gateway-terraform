@@ -45,6 +45,12 @@ variable "url_map_name" {
   type        = string
 }
 
+variable "default_backend_service" {
+  description = "Name of the default backend service (e.g., frontend-backend)"
+  type        = string
+  default     = "frontend-backend"
+}
+
 variable "path_matcher_name" {
   description = "Name for the new path matcher"
   type        = string
