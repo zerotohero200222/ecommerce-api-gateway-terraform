@@ -3,65 +3,117 @@
 # ============================================================
 
 steps:
-  # Step 1: Terraform Init
+  # Step 1: Terraform Format Check
+  - name: 'hashicorp/terraform:1.6'
+    id: 'terraform-fmt'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        echo "Checking Terraform formatting..."
+        terraform fmt -check -recursive || echo "Warning: Formatting issues found"
+
+  # Step 2: Terraform Init
   - name: 'hashicorp/terraform:1.6'
     id: 'terraform-init'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
+        echo "============================================="
         echo "Initializing Terraform..."
-        terraform init
+        echo "============================================="
+        terraform init -no-color
 
-  # Step 2: Terraform Plan
+  # Step 3: Terraform Validate
+  - name: 'hashicorp/terraform:1.6'
+    id: 'terraform-validate'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        echo "============================================="
+        echo "Validating Terraform configuration..."
+        echo "============================================="
+        terraform validate -no-color
+
+  # Step 4: Terraform Plan
   - name: 'hashicorp/terraform:1.6'
     id: 'terraform-plan'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
+        echo "============================================="
         echo "Planning Terraform changes..."
-        terraform plan -var-file=environments/${_ENVIRONMENT}.tfvars -out=tfplan
+        echo "Environment: ${_ENVIRONMENT}"
+        echo "============================================="
+        terraform plan \
+          -var-file=environments/${_ENVIRONMENT}.tfvars \
+          -out=tfplan \
+          -no-color
 
-  # Step 3: Terraform Apply (only on main branch)
+  # Step 5: Terraform Apply (only on main branch)
   - name: 'hashicorp/terraform:1.6'
     id: 'terraform-apply'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        if [ "${BRANCH_NAME}" = "main" ]; then
+        if [ "${BRANCH_NAME}" = "main" ] || [ "${_FORCE_APPLY}" = "true" ]; then
+          echo "============================================="
           echo "Applying Terraform changes..."
-          terraform apply -auto-approve tfplan
+          echo "============================================="
+          terraform apply -auto-approve tfplan -no-color
+          echo ""
+          echo "✅ Apply completed successfully!"
         else
+          echo "============================================="
           echo "Skipping apply - not main branch"
+          echo "Branch: ${BRANCH_NAME}"
+          echo "============================================="
         fi
 
-  # Step 4: Output Results
+  # Step 6: Terraform Output
   - name: 'hashicorp/terraform:1.6'
     id: 'terraform-output'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        if [ "${BRANCH_NAME}" = "main" ]; then
-          echo "==================================================="
-          echo "Deployment Summary:"
-          echo "==================================================="
-          terraform output configuration_summary
+        if [ "${BRANCH_NAME}" = "main" ] || [ "${_FORCE_APPLY}" = "true" ]; then
+          echo "============================================="
+          echo "📊 Deployment Summary"
+          echo "============================================="
+          terraform output -no-color configuration_summary
           echo ""
-          echo "To get the API key, run:"
+          echo "============================================="
+          echo "🔑 API Key Information"
+          echo "============================================="
+          echo "To retrieve the API key, run:"
+          echo "  gcloud builds log \$(gcloud builds list --limit=1 --format='value(id)') | grep 'API Key:'"
+          echo ""
+          echo "Or from Cloud Shell:"
           echo "  terraform output -raw api_key"
+          echo "============================================="
+          echo ""
+          echo "✅ Deployment completed successfully!"
+          echo "============================================="
         fi
 
-# Substitutions
+# Substitution variables
 substitutions:
   _ENVIRONMENT: 'dev'
+  _FORCE_APPLY: 'false'
 
-# Options
+# Build options
 options:
   logging: CLOUD_LOGGING_ONLY
-  machineType: 'N1_HIGHCPU_8'
+  machineType: 'E2_HIGHCPU_8'
+  dynamicSubstitutions: true
 
-# Timeout
+# Timeout (30 minutes)
 timeout: '1800s'
+
+# Service account (uses default Cloud Build SA)
+# Make sure the service account has required permissions
