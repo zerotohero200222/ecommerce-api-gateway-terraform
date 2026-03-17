@@ -1,13 +1,13 @@
 # ============================================================
-# E-Commerce API Gateway with Cloud Armor Security
+# E-Commerce API Gateway with Cloud Armor Security - FIXED
 # ============================================================
 # This configuration creates:
-#   1. Serverless NEG for API Gateway
-#   2. Backend Service for API Gateway
-#   3. URL Map path matcher for /api/*
-#   4. API Key for authentication
+#   1. API Key for authentication
+#   2. API Gateway config with security
+#   3. Serverless NEG for API Gateway
+#   4. Backend Service for API Gateway
 #   5. Cloud Armor security policy with API key injection
-#   6. Updated API Gateway configuration with security
+#   6. Updates existing URL Map with new path matcher
 # ============================================================
 
 locals {
@@ -31,22 +31,13 @@ locals {
     url_map_name      = var.url_map_name
     path_matcher_name = var.path_matcher_name
     path_pattern      = var.api_path_pattern
+    default_backend   = var.default_backend_service
   }
 
   # Cloud Armor configuration
   cloud_armor_config = {
     policy_name = var.security_policy_name
   }
-}
-
-# ============================================================
-# Data Sources - Fetch Existing Resources
-# ============================================================
-
-# Get existing URL Map
-data "google_compute_url_map" "existing_lb" {
-  name    = local.load_balancer_config.url_map_name
-  project = local.common_config.project_id
 }
 
 # ============================================================
@@ -100,19 +91,21 @@ resource "google_api_gateway_gateway" "gateway_update" {
 }
 
 # ============================================================
-# Serverless Network Endpoint Group (NEG)
+# Serverless Network Endpoint Group (NEG) - FIXED
 # ============================================================
 
 resource "google_compute_region_network_endpoint_group" "api_gateway_neg" {
+  provider = google-beta
+  
   name    = local.api_gateway_config.neg_name
   project = local.common_config.project_id
   region  = local.common_config.region
 
   network_endpoint_type = "SERVERLESS"
 
-  serverless_deployment {
-    platform = "apigateway.googleapis.com"
-    resource = local.api_gateway_config.gateway_name
+  # FIXED: Use cloud_function block for API Gateway
+  cloud_function {
+    function = local.api_gateway_config.gateway_name
   }
 
   lifecycle {
@@ -196,45 +189,28 @@ resource "google_compute_security_policy" "api_key_injection" {
 }
 
 # ============================================================
-# URL Map Update - Add Path Matcher
+# URL Map Update - FIXED
 # ============================================================
 
 resource "google_compute_url_map" "updated_lb" {
-  name            = local.load_balancer_config.url_map_name
-  project         = local.common_config.project_id
-  default_service = data.google_compute_url_map.existing_lb.default_service
+  name    = local.load_balancer_config.url_map_name
+  project = local.common_config.project_id
 
-  # Preserve existing host rules if any
-  dynamic "host_rule" {
-    for_each = data.google_compute_url_map.existing_lb.host_rule
-    content {
-      hosts        = host_rule.value.hosts
-      path_matcher = host_rule.value.path_matcher
-    }
+  # Default service from variable
+  default_service = "https://www.googleapis.com/compute/v1/projects/${local.common_config.project_id}/global/backendServices/${local.load_balancer_config.default_backend}"
+
+  # Host rule
+  host_rule {
+    hosts        = ["*"]
+    path_matcher = "allpaths"
   }
 
-  # Preserve existing path matchers
-  dynamic "path_matcher" {
-    for_each = data.google_compute_url_map.existing_lb.path_matcher
-    content {
-      name            = path_matcher.value.name
-      default_service = path_matcher.value.default_service
-
-      dynamic "path_rule" {
-        for_each = path_matcher.value.path_rule
-        content {
-          paths   = path_rule.value.paths
-          service = path_rule.value.service
-        }
-      }
-    }
-  }
-
-  # Add new path matcher for API Gateway
+  # Path matcher with API Gateway route
   path_matcher {
-    name            = local.load_balancer_config.path_matcher_name
-    default_service = data.google_compute_url_map.existing_lb.default_service
+    name            = "allpaths"
+    default_service = "https://www.googleapis.com/compute/v1/projects/${local.common_config.project_id}/global/backendServices/${local.load_balancer_config.default_backend}"
 
+    # New path rule for API Gateway
     path_rule {
       paths   = [local.load_balancer_config.path_pattern]
       service = google_compute_backend_service.api_gateway_backend.id
