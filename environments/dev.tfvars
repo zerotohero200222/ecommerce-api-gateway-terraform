@@ -12,9 +12,10 @@ gateway_name   = "ecommerce-gateway"
 new_api_config = "ecommerce-config-v3"
 
 # Load Balancer Configuration
-url_map_name      = "ecommerce-lb"
-path_matcher_name = "api-matcher"
-api_path_pattern  = "/api/*"
+url_map_name            = "ecommerce-lb"
+default_backend_service = "frontend-backend"
+path_matcher_name       = "api-matcher"
+api_path_pattern        = "/api/*"
 
 # Backend Service Configuration
 backend_service_name = "api-backend"
