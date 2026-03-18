@@ -1,5 +1,5 @@
 # ============================================================
-# E-Commerce API Gateway with Cloud Armor Security - FIXED
+# E-Commerce API Gateway with Cloud Armor Security - FINAL FIX
 # ============================================================
 # This configuration creates:
 #   1. API Key for authentication
@@ -8,6 +8,8 @@
 #   4. Backend Service for API Gateway
 #   5. Cloud Armor security policy with API key injection
 #   6. Updates existing URL Map with new path matcher
+#
+# IMPORTANT: This version handles EXISTING API Gateway correctly
 # ============================================================
 
 locals {
@@ -38,6 +40,17 @@ locals {
   cloud_armor_config = {
     policy_name = var.security_policy_name
   }
+}
+
+# ============================================================
+# Data Sources - Get Existing Gateway
+# ============================================================
+
+# Get existing gateway to update it
+data "google_api_gateway_gateway" "existing_gateway" {
+  gateway_id = local.api_gateway_config.gateway_name
+  region     = local.common_config.region
+  project    = local.common_config.project_id
 }
 
 # ============================================================
@@ -79,19 +92,35 @@ resource "google_api_gateway_api_config" "secured_config" {
   }
 }
 
-# Update API Gateway to use new config
-resource "google_api_gateway_gateway" "gateway_update" {
-  provider   = google-beta
-  api_config = google_api_gateway_api_config.secured_config.id
-  gateway_id = local.api_gateway_config.gateway_name
-  region     = local.common_config.region
-  project    = local.common_config.project_id
+# ============================================================
+# Null Resource to Update Gateway via gcloud
+# ============================================================
 
-  depends_on = [google_api_gateway_api_config.secured_config]
+resource "null_resource" "update_gateway" {
+  triggers = {
+    api_config_id = google_api_gateway_api_config.secured_config.id
+    gateway_id    = local.api_gateway_config.gateway_name
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      gcloud api-gateway gateways update ${local.api_gateway_config.gateway_name} \
+        --api=${local.api_gateway_config.api_name} \
+        --api-config=${local.api_gateway_config.new_config} \
+        --location=${local.common_config.region} \
+        --project=${local.common_config.project_id} \
+        --quiet
+    EOT
+  }
+
+  depends_on = [
+    google_api_gateway_api_config.secured_config,
+    data.google_api_gateway_gateway.existing_gateway
+  ]
 }
 
 # ============================================================
-# Serverless Network Endpoint Group (NEG) - FIXED
+# Serverless Network Endpoint Group (NEG)
 # ============================================================
 
 resource "google_compute_region_network_endpoint_group" "api_gateway_neg" {
@@ -103,7 +132,7 @@ resource "google_compute_region_network_endpoint_group" "api_gateway_neg" {
 
   network_endpoint_type = "SERVERLESS"
 
-  # FIXED: Use cloud_function block for API Gateway
+  # Use cloud_function block for API Gateway
   cloud_function {
     function = local.api_gateway_config.gateway_name
   }
@@ -112,7 +141,7 @@ resource "google_compute_region_network_endpoint_group" "api_gateway_neg" {
     create_before_destroy = true
   }
 
-  depends_on = [google_api_gateway_gateway.gateway_update]
+  depends_on = [null_resource.update_gateway]
 }
 
 # ============================================================
@@ -189,7 +218,7 @@ resource "google_compute_security_policy" "api_key_injection" {
 }
 
 # ============================================================
-# URL Map Update - FIXED
+# URL Map Update
 # ============================================================
 
 resource "google_compute_url_map" "updated_lb" {
