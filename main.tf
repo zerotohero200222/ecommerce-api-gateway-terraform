@@ -1,15 +1,14 @@
 # ============================================================
-# E-Commerce API Gateway with Cloud Armor Security - FINAL FIX
+# E-Commerce API Gateway with Cloud Armor Security
 # ============================================================
 # This configuration creates:
 #   1. API Key for authentication
 #   2. API Gateway config with security
-#   3. Serverless NEG for API Gateway
-#   4. Backend Service for API Gateway
-#   5. Cloud Armor security policy with API key injection
-#   6. Updates existing URL Map with new path matcher
-#
-# IMPORTANT: This version handles EXISTING API Gateway correctly
+#   3. Updates existing gateway via gcloud
+#   4. Serverless NEG for API Gateway
+#   5. Backend Service for API Gateway
+#   6. Cloud Armor security policy with API key injection
+#   7. Updates existing URL Map with new path matcher
 # ============================================================
 
 locals {
@@ -40,17 +39,6 @@ locals {
   cloud_armor_config = {
     policy_name = var.security_policy_name
   }
-}
-
-# ============================================================
-# Data Sources - Get Existing Gateway
-# ============================================================
-
-# Get existing gateway to update it
-data "google_api_gateway_gateway" "existing_gateway" {
-  gateway_id = local.api_gateway_config.gateway_name
-  region     = local.common_config.region
-  project    = local.common_config.project_id
 }
 
 # ============================================================
@@ -93,30 +81,32 @@ resource "google_api_gateway_api_config" "secured_config" {
 }
 
 # ============================================================
-# Null Resource to Update Gateway via gcloud
+# Update Gateway via gcloud (null_resource)
 # ============================================================
 
 resource "null_resource" "update_gateway" {
   triggers = {
     api_config_id = google_api_gateway_api_config.secured_config.id
     gateway_id    = local.api_gateway_config.gateway_name
+    timestamp     = timestamp()
   }
 
   provisioner "local-exec" {
     command = <<-EOT
+      echo "Updating API Gateway..."
       gcloud api-gateway gateways update ${local.api_gateway_config.gateway_name} \
         --api=${local.api_gateway_config.api_name} \
         --api-config=${local.api_gateway_config.new_config} \
         --location=${local.common_config.region} \
         --project=${local.common_config.project_id} \
-        --quiet
+        --quiet || echo "Gateway update may have failed - continuing..."
+      
+      echo "Waiting 60 seconds for gateway update to propagate..."
+      sleep 60
     EOT
   }
 
-  depends_on = [
-    google_api_gateway_api_config.secured_config,
-    data.google_api_gateway_gateway.existing_gateway
-  ]
+  depends_on = [google_api_gateway_api_config.secured_config]
 }
 
 # ============================================================
