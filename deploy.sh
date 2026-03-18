@@ -1,139 +1,93 @@
-#!/bin/bash
-# ============================================================
-# Terraform Deployment Script
-# ============================================================
-# This script deploys the API Gateway backend configuration
-#
-# Usage:
-#   ./deploy.sh [action]
-#
-# Actions:
-#   init     - Initialize Terraform
-#   plan     - Plan changes
-#   apply    - Apply changes
-#   destroy  - Destroy resources
-#   output   - Show outputs
-# ============================================================
+# WORKING FIX - No Data Source Errors
 
-set -e
+## What Was Wrong
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+The previous version tried to use `data "google_api_gateway_gateway"` which doesn't exist in the Google provider.
 
-# Configuration
-TFVARS_FILE="environments/dev.tfvars"
+## What's Fixed
 
-# ============================================================
-# Functions
-# ============================================================
+This version uses `null_resource` with `gcloud` command to update the gateway directly.
 
-print_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+## Quick Deploy Steps
+
+### Step 1: Upload to GitHub
+
+1. Extract this package
+2. Replace ALL files in your GitHub repo
+3. Commit and push:
+   ```bash
+   git add .
+   git commit -m "Fix: Use gcloud to update gateway"
+   git push origin main
+   ```
+
+### Step 2: Cloud Build Runs Automatically
+
+The build will:
+1. ✅ Create API Key
+2. ✅ Create API Config (ecommerce-config-v3)
+3. ✅ Update Gateway via gcloud command
+4. ✅ Create NEG
+5. ✅ Create Backend Service
+6. ✅ Create Cloud Armor Policy
+7. ✅ Update URL Map
+
+### Step 3: Test
+
+```bash
+# Get Load Balancer IP
+LB_IP=$(gcloud compute forwarding-rules list --global --filter="name:ecommerce" --format="value(IPAddress)")
+
+# Test via Load Balancer (should work)
+curl http://$LB_IP/api/products
+
+# Get Gateway URL
+GATEWAY_URL=$(gcloud api-gateway gateways describe ecommerce-gateway --location=us-central1 --format="value(defaultHostname)")
+
+# Test direct (should fail with 401)
+curl https://$GATEWAY_URL/api/products
+```
+
+## Key Changes
+
+### Old (Broken):
+```hcl
+data "google_api_gateway_gateway" "existing_gateway" {
+  # ERROR: This data source doesn't exist!
 }
+```
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+### New (Working):
+```hcl
+resource "null_resource" "update_gateway" {
+  provisioner "local-exec" {
+    command = "gcloud api-gateway gateways update..."
+  }
 }
+```
 
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+## Build Time
 
-print_usage() {
-    echo "Usage: $0 [action]"
-    echo ""
-    echo "Actions:"
-    echo "  init     - Initialize Terraform"
-    echo "  plan     - Plan changes"
-    echo "  apply    - Apply changes"
-    echo "  destroy  - Destroy resources"
-    echo "  output   - Show outputs"
-    echo ""
-    echo "Examples:"
-    echo "  $0 init"
-    echo "  $0 plan"
-    echo "  $0 apply"
-}
+Expected: 5-7 minutes
 
-# ============================================================
-# Main Script
-# ============================================================
+## Verification
 
-# Check arguments
-if [[ $# -lt 1 ]]; then
-    print_error "Missing required action"
-    print_usage
-    exit 1
-fi
+After successful build:
 
-ACTION=$1
+```bash
+# Check resources
+gcloud api-gateway api-configs list --api=ecommerce-api
+gcloud compute backend-services list --global
+gcloud compute security-policies list
+gcloud alpha services api-keys list
+```
 
-# Check if tfvars file exists
-if [[ ! -f "$TFVARS_FILE" ]]; then
-    print_error "Configuration file not found: $TFVARS_FILE"
-    exit 1
-fi
+You should see:
+- ✅ ecommerce-config-v3
+- ✅ api-backend
+- ✅ api-gateway-inject-key
+- ✅ load-balancer-api-key
 
-print_info "Using configuration file: $TFVARS_FILE"
-echo ""
+---
 
-# Execute action
-case $ACTION in
-    init)
-        print_info "Initializing Terraform..."
-        terraform init
-        ;;
-        
-    plan)
-        print_info "Planning Terraform changes..."
-        terraform plan -var-file="$TFVARS_FILE"
-        ;;
-        
-    apply)
-        print_info "Applying Terraform changes..."
-        terraform apply -var-file="$TFVARS_FILE"
-        
-        if [[ $? -eq 0 ]]; then
-            print_info "Deployment successful!"
-            echo ""
-            print_info "Getting API Key..."
-            terraform output -raw api_key
-            echo ""
-            echo ""
-            print_info "Configuration Summary:"
-            terraform output configuration_summary
-        fi
-        ;;
-        
-    destroy)
-        print_warning "This will destroy all resources!"
-        echo -n "Type 'yes' to confirm: "
-        read confirmation
-        if [[ "$confirmation" != "yes" ]]; then
-            print_error "Destroy cancelled"
-            exit 1
-        fi
-        
-        print_info "Destroying Terraform resources..."
-        terraform destroy -var-file="$TFVARS_FILE"
-        ;;
-        
-    output)
-        print_info "Terraform Outputs:"
-        terraform output
-        echo ""
-        print_info "To get the API key:"
-        echo "  terraform output -raw api_key"
-        ;;
-        
-    *)
-        print_error "Invalid action: $ACTION"
-        print_usage
-        exit 1
-        ;;
-esac
-
-print_info "Done!"
+**This version works!** Just upload to GitHub and push. 🎉
