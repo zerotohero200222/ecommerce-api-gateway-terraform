@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.0"
+    }
   }
 
   backend "gcs" {
@@ -13,6 +17,11 @@ terraform {
 }
 
 provider "google" {
+  project = "project-1c4daaee-c7bb-486d-970"
+  region  = "us-central1"
+}
+
+provider "google-beta" {
   project = "project-1c4daaee-c7bb-486d-970"
   region  = "us-central1"
 }

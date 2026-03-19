@@ -1,15 +1,16 @@
 ########################################
-# RANDOM SUFFIX (Fix API Key conflict)
+# RANDOM SUFFIX
 ########################################
 resource "random_id" "suffix" {
   byte_length = 2
 }
 
 ########################################
-# API KEY (UNIQUE)
+# API KEY (FIXED)
 ########################################
 resource "google_apikeys_key" "api_key" {
-  display_name = "lb-api-key-${random_id.suffix.hex}"
+  name         = "lb-api-key-${random_id.suffix.hex}"
+  display_name = "LoadBalancer API Key"
 
   restrictions {
     api_targets {
@@ -19,21 +20,17 @@ resource "google_apikeys_key" "api_key" {
 }
 
 ########################################
-# SERVERLESS NEG (API Gateway)
+# SERVERLESS NEG (FIXED)
 ########################################
 resource "google_compute_region_network_endpoint_group" "api_gateway_neg" {
+  provider              = google-beta
   name                  = "api-gateway-neg"
-  region                = var.region
+  region                = "us-central1"
   network_endpoint_type = "SERVERLESS"
-
-  cloud_run {
-    # dummy block required by provider
-    service = "placeholder"
-  }
 
   serverless_deployment {
     platform = "apigateway.googleapis.com"
-    resource = var.gateway_name
+    resource = "ecommerce-gateway"
   }
 }
 
@@ -52,7 +49,7 @@ resource "google_compute_backend_service" "api_backend" {
 }
 
 ########################################
-# CLOUD ARMOR POLICY
+# CLOUD ARMOR POLICY (FIXED)
 ########################################
 resource "google_compute_security_policy" "api_policy" {
   name = "api-gateway-inject-key"
@@ -69,7 +66,7 @@ resource "google_compute_security_policy" "api_policy" {
     }
 
     header_action {
-      request_headers_to_add {
+      request_headers_to_adds {
         header_name  = "x-api-key"
         header_value = google_apikeys_key.api_key.key_string
       }
