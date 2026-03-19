@@ -1,5 +1,5 @@
 # ============================================================
-# Terraform Provider Configuration
+# Terraform Provider Configuration with GCS Backend
 # ============================================================
 
 terraform {
@@ -14,16 +14,17 @@ terraform {
       source  = "hashicorp/google-beta"
       version = "~> 5.0"
     }
-    local = {
-      source  = "hashicorp/local"
-      version = "~> 2.4"
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
     }
   }
 
-  # Local state configuration
-  # State file will be stored in the current directory
-  backend "local" {
-    path = "terraform.tfstate"
+  # Remote state in Google Cloud Storage
+  # This ensures state persists across Cloud Build runs
+  backend "gcs" {
+    bucket = "ecommerce-terraform-state-project-1c4daaee-c7bb-486d-970"
+    prefix = "terraform/state"
   }
 }
 
