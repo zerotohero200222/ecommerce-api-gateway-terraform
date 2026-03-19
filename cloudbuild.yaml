@@ -1,5 +1,7 @@
 # ============================================================
-# Cloud Build Configuration for Terraform Deployment
+# Cloud Build Configuration - FIXED VERSION
+# ============================================================
+# This version uses gcloud SDK container to update API Gateway
 # ============================================================
 
 steps:
@@ -66,7 +68,7 @@ steps:
           echo "============================================="
           terraform apply -auto-approve tfplan -no-color
           echo ""
-          echo "✅ Apply completed successfully!"
+          echo "✅ Terraform apply completed!"
         else
           echo "============================================="
           echo "Skipping apply - not main branch"
@@ -74,7 +76,33 @@ steps:
           echo "============================================="
         fi
 
-  # Step 6: Terraform Output
+  # Step 6: Update API Gateway using gcloud (NEW!)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'update-gateway'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "${BRANCH_NAME}" = "main" ] || [ "${_FORCE_APPLY}" = "true" ]; then
+          echo "============================================="
+          echo "Updating API Gateway..."
+          echo "============================================="
+          
+          gcloud api-gateway gateways update ecommerce-gateway \
+            --api=ecommerce-api \
+            --api-config=ecommerce-config-v3 \
+            --location=us-central1 \
+            --project=$PROJECT_ID \
+            --quiet
+          
+          echo ""
+          echo "✅ Gateway updated successfully!"
+          echo "Waiting 30 seconds for propagation..."
+          sleep 30
+        fi
+    waitFor: ['terraform-apply']
+
+  # Step 7: Terraform Output
   - name: 'hashicorp/terraform:1.6'
     id: 'terraform-output'
     entrypoint: 'sh'
@@ -91,15 +119,16 @@ steps:
           echo "🔑 API Key Information"
           echo "============================================="
           echo "To retrieve the API key, run:"
-          echo "  gcloud builds log \$(gcloud builds list --limit=1 --format='value(id)') | grep 'API Key:'"
-          echo ""
-          echo "Or from Cloud Shell:"
           echo "  terraform output -raw api_key"
+          echo ""
+          echo "Or from this build:"
+          echo "  gcloud builds log $BUILD_ID | grep 'API Key'"
           echo "============================================="
           echo ""
           echo "✅ Deployment completed successfully!"
           echo "============================================="
         fi
+    waitFor: ['update-gateway']
 
 # Substitution variables
 substitutions:
@@ -114,6 +143,3 @@ options:
 
 # Timeout (30 minutes)
 timeout: '1800s'
-
-# Service account (uses default Cloud Build SA)
-# Make sure the service account has required permissions
