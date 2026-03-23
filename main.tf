@@ -1,4 +1,5 @@
-# E-Commerce API Gateway with Cloud Armor Security - FIXED
+# ============================================================
+# E-Commerce API Gateway with Cloud Armor Security - FINAL
 # ============================================================
 
 locals {
@@ -35,7 +36,7 @@ resource "random_id" "suffix" {
 }
 
 # ============================================================
-# API Key Creation with Unique Name
+# API Key Creation
 # ============================================================
 
 resource "google_apikeys_key" "api_key" {
@@ -114,7 +115,6 @@ resource "google_compute_region_network_endpoint_group" "api_gateway_neg" {
 
   network_endpoint_type = "SERVERLESS"
 
-  # Use serverless_deployment for API Gateway
   serverless_deployment {
     platform = "apigateway.googleapis.com"
     resource = local.api_gateway_config.gateway_name
@@ -136,7 +136,6 @@ resource "google_compute_security_policy" "api_policy" {
   project     = local.common_config.project_id
   description = "Inject x-api-key header for API Gateway authentication"
 
-  # Default rule - allow all
   rule {
     action   = "allow"
     priority = "2147483647"
@@ -149,7 +148,6 @@ resource "google_compute_security_policy" "api_policy" {
     description = "Default rule - allow all traffic"
   }
 
-  # Custom rule - inject API key header
   rule {
     action   = "allow"
     priority = "1000"
@@ -171,31 +169,32 @@ resource "google_compute_security_policy" "api_policy" {
 }
 
 # ============================================================
-# Backend Service - FIXED (removed timeout_sec)
+# Backend Service - FIXED (no timeout_sec for serverless)
 # ============================================================
 
 resource "google_compute_backend_service" "api_gateway_backend" {
   name    = local.api_gateway_config.backend_service
   project = local.common_config.project_id
   protocol = "HTTP"
-  # timeout_sec removed - not supported for serverless NEGs
+  
+  # IMPORTANT: timeout_sec not supported for serverless NEGs
   
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  
+
   backend {
     group = google_compute_region_network_endpoint_group.api_gateway_neg.id
   }
-  
-  security_policy = google_compute_security_policy.api_key_injection.id
-  
+
+  security_policy = google_compute_security_policy.api_policy.id
+
   log_config {
     enable      = var.enable_backend_logs
     sample_rate = var.log_sample_rate
   }
-  
+
   depends_on = [
     google_compute_region_network_endpoint_group.api_gateway_neg,
-    google_compute_security_policy.api_key_injection
+    google_compute_security_policy.api_policy
   ]
 }
 
@@ -220,9 +219,9 @@ resource "google_compute_url_map" "updated_lb" {
 
     path_rule {
       paths   = [local.load_balancer_config.path_pattern]
-      service = google_compute_backend_service.api_backend.id
+      service = google_compute_backend_service.api_gateway_backend.id
     }
   }
 
-  depends_on = [google_compute_backend_service.api_backend]
+  depends_on = [google_compute_backend_service.api_gateway_backend]
 }
