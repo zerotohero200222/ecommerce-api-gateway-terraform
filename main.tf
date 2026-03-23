@@ -174,32 +174,28 @@ resource "google_compute_security_policy" "api_policy" {
 # Backend Service - FIXED (removed timeout_sec)
 # ============================================================
 
-resource "google_compute_backend_service" "api_backend" {
+resource "google_compute_backend_service" "api_gateway_backend" {
   name    = local.api_gateway_config.backend_service
   project = local.common_config.project_id
-  
-  # IMPORTANT: Do NOT set timeout_sec for serverless NEGs
-  # It's not supported and will cause an error
   protocol = "HTTP"
+  # timeout_sec removed - not supported for serverless NEGs
   
   load_balancing_scheme = "EXTERNAL_MANAGED"
-
+  
   backend {
     group = google_compute_region_network_endpoint_group.api_gateway_neg.id
   }
-
-  # Attach Cloud Armor security policy
-  security_policy = google_compute_security_policy.api_policy.id
-
-  # Enable logging
+  
+  security_policy = google_compute_security_policy.api_key_injection.id
+  
   log_config {
     enable      = var.enable_backend_logs
     sample_rate = var.log_sample_rate
   }
-
+  
   depends_on = [
     google_compute_region_network_endpoint_group.api_gateway_neg,
-    google_compute_security_policy.api_policy
+    google_compute_security_policy.api_key_injection
   ]
 }
 
